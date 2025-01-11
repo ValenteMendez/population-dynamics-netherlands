@@ -1,7 +1,7 @@
 # Murder and Manslaughter Analysis in the Netherlands (1996-2023)
 This repository contains an interactive dashboard analyzing murder and manslaughter statistics in the Netherlands over a 27-year period, using official data from Statistics Netherlands (CBS). The analysis provides comprehensive insights into trends, patterns, and demographic distributions of violent crimes resulting in death.
 
-Go to the app: https://financial-inclusion-mx-2024.streamlit.app/
+Go to the app: https://crime-in-netherlands.streamlit.app/
 
 ## Data Source
 - Data sourced from Statistics Netherlands (CBS)
