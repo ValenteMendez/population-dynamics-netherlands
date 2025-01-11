@@ -118,8 +118,8 @@ def main():
         df_methods = df[
             (df["Sex Label"] == "Total male and female") &
             (df["Characteristics Label"].str.contains("Method:", case=False, na=False))
-        ].copy()
-        df_methods["Method"] = df_methods["Characteristics Label"].str.replace("Method:", "", case=False).str.strip()
+        ].groupby("Characteristics Label")["VictimsMurderManslaughter_1"].sum().reset_index()
+        df_methods["Method"] = df_methods["Characteristics Label"].str.replace("Method:", "").str.strip()
 
         df_age = df[
             (df["Sex Label"] == "Total male and female") &
@@ -310,7 +310,7 @@ def main():
 
     bar_chart_type = st.radio(
         "Select bar chart view type:",
-        ("Percentage of total", "Totals"),  # Swapped order to make percentage default
+        ("Percentage of total", "Totals"),
     )
     stack_type = None if bar_chart_type == "Totals" else "normalize"
 
@@ -322,14 +322,49 @@ def main():
     df_methods_all["Year"] = df_methods_all["Period Label"].astype(int)
     df_methods_all["Method"] = df_methods_all["Characteristics Label"].str.replace("Method:", "").str.strip()
 
-    c_methods_all = alt.Chart(df_methods_all).mark_bar().encode(
-        x=alt.X("Year:O", title="year", sort=[]),
-        y=alt.Y("VictimsMurderManslaughter_1:Q", stack=stack_type, title="victims"),
-        color=alt.Color("Method:N", legend=alt.Legend(title="Method")),
-        tooltip=[alt.Tooltip("Year:O"), alt.Tooltip("Method:N"), alt.Tooltip("VictimsMurderManslaughter_1:Q")]
-    ).properties(width="container", height=300, title="Murder methods over years")
+    # Format tooltip based on chart type
+    if bar_chart_type == "Percentage of total":
+        # Create a normalized version of the data
+        df_methods_all_pct = df_methods_all.copy()
+        yearly_totals = df_methods_all.groupby('Year')['VictimsMurderManslaughter_1'].sum().reset_index()
+        df_methods_all_pct = df_methods_all_pct.merge(yearly_totals, on='Year', suffixes=('', '_total'))
+        df_methods_all_pct['percentage'] = df_methods_all_pct['VictimsMurderManslaughter_1'] / df_methods_all_pct['VictimsMurderManslaughter_1_total']
 
-    st.altair_chart(c_methods_all, use_container_width=True)
+        tooltip_format = [
+            alt.Tooltip("Year:O", title="Year"),
+            alt.Tooltip("Method:N", title="Method"),
+            alt.Tooltip("percentage:Q", format='.1%', title="Percentage of Total")
+        ]
+        
+        c_methods_all = alt.Chart(df_methods_all_pct).mark_bar().encode(
+            x=alt.X("Year:O", title="year"),
+            y=alt.Y("percentage:Q", 
+                    stack="zero",
+                    title="percentage of total",
+                    axis=alt.Axis(format='%')),
+            color=alt.Color("Method:N", legend=alt.Legend(title="Method")),
+            tooltip=tooltip_format
+        )
+    else:
+        tooltip_format = [
+            alt.Tooltip("Year:O", title="Year"),
+            alt.Tooltip("Method:N", title="Method"),
+            alt.Tooltip("VictimsMurderManslaughter_1:Q", format=',d', title="Number of Victims")
+        ]
+        
+        c_methods_all = alt.Chart(df_methods_all).mark_line(point=True).encode(
+            x=alt.X("Year:O", title="year"),
+            y=alt.Y("VictimsMurderManslaughter_1:Q", 
+                    title="number of victims",
+                    axis=alt.Axis(format=',d')),
+            color=alt.Color("Method:N", legend=alt.Legend(title="Method")),
+            tooltip=tooltip_format
+        )
+
+    st.altair_chart(
+        c_methods_all.properties(width="container", height=300, title="Murder methods over years"), 
+        use_container_width=True
+    )
 
     # 2) Age Groups
     df_age_all = df[
@@ -339,14 +374,65 @@ def main():
     df_age_all["Year"] = df_age_all["Period Label"].astype(int)
     df_age_all["AgeGroup"] = df_age_all["Characteristics Label"].str.replace("Age:", "").str.strip()
 
-    c_age_all = alt.Chart(df_age_all).mark_bar().encode(
-        x=alt.X("Year:O", title="year", sort=[]),
-        y=alt.Y("VictimsMurderManslaughter_1:Q", stack=stack_type, title="victims"),
-        color=alt.Color("AgeGroup:N", legend=alt.Legend(title="Age Group")),
-        tooltip=[alt.Tooltip("Year:O"), alt.Tooltip("AgeGroup:N"), alt.Tooltip("VictimsMurderManslaughter_1:Q")]
-    ).properties(width="container", height=300, title="Victims by age group over years")
+    if bar_chart_type == "Percentage of total":
+        # Create a normalized version of the data
+        df_age_all_pct = df_age_all.copy()
+        yearly_totals = df_age_all.groupby('Year')['VictimsMurderManslaughter_1'].sum().reset_index()
+        df_age_all_pct = df_age_all_pct.merge(yearly_totals, on='Year', suffixes=('', '_total'))
+        df_age_all_pct['percentage'] = df_age_all_pct['VictimsMurderManslaughter_1'] / df_age_all_pct['VictimsMurderManslaughter_1_total']
 
-    st.altair_chart(c_age_all, use_container_width=True)
+        # Add an order column based on age_order list (reversed enumeration)
+        order_dict = {age: len(age_order) - i for i, age in enumerate(age_order)}
+        df_age_all_pct['order'] = df_age_all_pct['AgeGroup'].map(order_dict)
+
+        tooltip_format = [
+            alt.Tooltip("Year:O", title="Year"),
+            alt.Tooltip("AgeGroup:N", title="Age Group"),
+            alt.Tooltip("percentage:Q", format='.1%', title="Percentage of Total")
+        ]
+        
+        c_age_all = alt.Chart(df_age_all_pct).mark_bar().encode(
+            x=alt.X("Year:O", title="year"),
+            y=alt.Y("percentage:Q", 
+                    stack="zero",
+                    title="percentage of total",
+                    axis=alt.Axis(format='%')),
+            color=alt.Color(
+                "AgeGroup:N", 
+                scale=alt.Scale(domain=age_order),
+                legend=alt.Legend(
+                    title="Age Group",
+                    orient="right",
+                    symbolLimit=len(age_order)
+                )
+            ),
+            order=alt.Order(
+                "order:Q",
+                sort="ascending"
+            ),
+            tooltip=tooltip_format
+        )
+    else:
+        tooltip_format = [
+            alt.Tooltip("Year:O", title="Year"),
+            alt.Tooltip("AgeGroup:N", title="Age Group"),
+            alt.Tooltip("VictimsMurderManslaughter_1:Q", format=',d', title="Number of Victims")
+        ]
+        c_age_all = alt.Chart(df_age_all).mark_line(point=True).encode(
+            x=alt.X("Year:O", title="year"),
+            y=alt.Y("VictimsMurderManslaughter_1:Q", 
+                    title="number of victims",
+                    axis=alt.Axis(format=',d')),
+            color=alt.Color("AgeGroup:N", 
+                           sort=age_order,
+                           legend=alt.Legend(title="Age Group")),
+            tooltip=tooltip_format
+        )
+
+    st.altair_chart(
+        c_age_all.properties(width="container", height=300, title="Victims by age group over years"), 
+        use_container_width=True
+    )
 
     # 3) Locations
     df_loc_all = df[
@@ -356,14 +442,40 @@ def main():
     df_loc_all["Year"] = df_loc_all["Period Label"].astype(int)
     df_loc_all["Location"] = df_loc_all["Characteristics Label"].str.replace("Location:", "").str.strip()
 
-    c_loc_all = alt.Chart(df_loc_all).mark_bar().encode(
-        x=alt.X("Year:O", title="year", sort=[]),
-        y=alt.Y("VictimsMurderManslaughter_1:Q", stack=stack_type, title="victims"),
-        color=alt.Color("Location:N", legend=alt.Legend(title="Location")),
-        tooltip=[alt.Tooltip("Year:O"), alt.Tooltip("Location:N"), alt.Tooltip("VictimsMurderManslaughter_1:Q")]
-    ).properties(width="container", height=300, title="Murder locations over years")
+    if bar_chart_type == "Percentage of total":
+        tooltip_format = [
+            alt.Tooltip("Year:O", title="Year"),
+            alt.Tooltip("Location:N", title="Location"),
+            alt.Tooltip("VictimsMurderManslaughter_1:Q", format='.1%', title="Percentage")
+        ]
+        c_loc_all = alt.Chart(df_loc_all).mark_bar().encode(
+            x=alt.X("Year:O", title="year"),
+            y=alt.Y("VictimsMurderManslaughter_1:Q", 
+                    stack=stack_type, 
+                    title="percentage",
+                    axis=alt.Axis(format='.0%')),
+            color=alt.Color("Location:N", legend=alt.Legend(title="Location")),
+            tooltip=tooltip_format
+        )
+    else:
+        tooltip_format = [
+            alt.Tooltip("Year:O", title="Year"),
+            alt.Tooltip("Location:N", title="Location"),
+            alt.Tooltip("VictimsMurderManslaughter_1:Q", format=',d', title="Number of Victims")
+        ]
+        c_loc_all = alt.Chart(df_loc_all).mark_line(point=True).encode(
+            x=alt.X("Year:O", title="year"),
+            y=alt.Y("VictimsMurderManslaughter_1:Q", 
+                    title="number of victims",
+                    axis=alt.Axis(format=',d')),
+            color=alt.Color("Location:N", legend=alt.Legend(title="Location")),
+            tooltip=tooltip_format
+        )
 
-    st.altair_chart(c_loc_all, use_container_width=True)
+    st.altair_chart(
+        c_loc_all.properties(width="container", height=300, title="Murder locations over years"), 
+        use_container_width=True
+    )
 
     # 4) Gender
     df_gender_all = df[
@@ -372,36 +484,40 @@ def main():
     ].copy()
     df_gender_all["Year"] = df_gender_all["Period Label"].astype(int)
 
-    c_gen_all = alt.Chart(df_gender_all).mark_bar().encode(
-        x=alt.X("Year:O", title="year", sort=[]),
-        y=alt.Y("VictimsMurderManslaughter_1:Q", stack=stack_type, title="victims"),
-        color=alt.Color("Sex Label:N", legend=alt.Legend(title="Gender")),
-        tooltip=[alt.Tooltip("Year:O"), alt.Tooltip("Sex Label:N"), alt.Tooltip("VictimsMurderManslaughter_1:Q")]
-    ).properties(width="container", height=300, title="Victims by gender over years")
+    if bar_chart_type == "Percentage of total":
+        tooltip_format = [
+            alt.Tooltip("Year:O", title="Year"),
+            alt.Tooltip("Sex Label:N", title="Gender"),
+            alt.Tooltip("VictimsMurderManslaughter_1:Q", format='.1%', title="Percentage")
+        ]
+        c_gen_all = alt.Chart(df_gender_all).mark_bar().encode(
+            x=alt.X("Year:O", title="year"),
+            y=alt.Y("VictimsMurderManslaughter_1:Q", 
+                    stack=stack_type, 
+                    title="percentage",
+                    axis=alt.Axis(format='.0%')),
+            color=alt.Color("Sex Label:N", legend=alt.Legend(title="Gender")),
+            tooltip=tooltip_format
+        )
+    else:
+        tooltip_format = [
+            alt.Tooltip("Year:O", title="Year"),
+            alt.Tooltip("Sex Label:N", title="Gender"),
+            alt.Tooltip("VictimsMurderManslaughter_1:Q", format=',d', title="Number of Victims")
+        ]
+        c_gen_all = alt.Chart(df_gender_all).mark_line(point=True).encode(
+            x=alt.X("Year:O", title="year"),
+            y=alt.Y("VictimsMurderManslaughter_1:Q", 
+                    title="number of victims",
+                    axis=alt.Axis(format=',d')),
+            color=alt.Color("Sex Label:N", legend=alt.Legend(title="Gender")),
+            tooltip=tooltip_format
+        )
 
-    st.altair_chart(c_gen_all, use_container_width=True)
-
-    # Gender Trend Over Time
-    # Empty line to maintain spacing with chart title in properties below
-    # Filter to totals for characteristics label = 'Total' but separate male/female
-    df_g = df[
-        (df['Characteristics Label'] == 'Total') &
-        (df['Sex Label'] != 'Total male and female')
-    ].copy()
-    df_g["Year"] = df_g["Period Label"].astype(int)
-
-    # Summarize total victims by Year and Gender
-    grouped_gender = df_g.groupby(["Year", "Sex Label"])["VictimsMurderManslaughter_1"].sum().reset_index()
-
-    # Create a line chart that color-codes by gender
-    c_gender_trend = alt.Chart(grouped_gender).mark_line(point=True).encode(
-        x=alt.X("Year:O", title="year"),
-        y=alt.Y("VictimsMurderManslaughter_1:Q", title="number of victims"),
-        color=alt.Color("Sex Label:N", title="Gender"),
-        tooltip=["Year", "Sex Label", "VictimsMurderManslaughter_1"]
-    ).properties(width="container", height=400)
-
-    st.altair_chart(c_gender_trend, use_container_width=True)
+    st.altair_chart(
+        c_gen_all.properties(width="container", height=300, title="Victims by gender over years"), 
+        use_container_width=True
+    )
 
     # ------------------------------------------------------------------
     # Footer
