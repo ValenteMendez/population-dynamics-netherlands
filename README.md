@@ -25,7 +25,6 @@ Go to the app: https://crime-in-netherlands.streamlit.app/
 - Significant reduction in per-million rate from 16.5 (2001) to 7.0 (2023)
 - Consistent patterns in murder methods with stabbing being predominant
 - Notable demographic shifts in victim age groups over time
-- Persistent but narrowing gender disparities
 
 ## Acknowledgments
 - Statistics Netherlands (CBS) for providing the comprehensive dataset
