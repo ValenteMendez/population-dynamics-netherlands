@@ -1,529 +1,344 @@
 import streamlit as st
 import pandas as pd
-import altair as alt
+import plotly.express as px
+import plotly.graph_objects as go
+import numpy as np
 
-# Set page configuration
-st.set_page_config(page_title="Crime in Netherlands", page_icon="💀", layout="centered")
+# Page config
+st.set_page_config(page_title="Population Dynamics in the Netherlands", page_icon="👥", layout="wide")
 
+# Load and process data
+@st.cache_data
 def load_data():
-    try:
-        df = pd.read_csv("250111_CLEAN_murders_NL.csv")
-        return df
-    except FileNotFoundError:
-        st.error("Data file not found. Please ensure '250111_CLEAN_murders_NL.csv' is in the same directory as the app.")
-        st.stop()
+    df = pd.read_csv("250112_CLEAN_population_regional_NL.csv")
+    return df[df['Sex Label'] == 'Total male and female']
+
+def format_number(num: float) -> str:
+    if pd.isna(num):
+        return "N/A"
+    return f"{int(num):,}"
+
+def create_population_chart(data: pd.DataFrame, region_name: str):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=data['Periods Label'],
+        y=data['PopulationOn31December_20'],
+        mode='lines+markers',
+        name='Population',
+        line=dict(width=2, color='rgb(0, 123, 255)')
+    ))
+    fig.update_layout(
+        title=f'Population Growth ({region_name})',
+        xaxis_title='Year',
+        yaxis_title='Population',
+        yaxis=dict(tickformat=','),
+        hovermode='x unified',
+        showlegend=False,
+        height=600
+    )
+    return fig
+
+def create_natural_change_chart(data: pd.DataFrame):
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=data['Periods Label'],
+        y=data['LiveBornChildren_3'],
+        name='Births',
+        marker_color='rgb(40, 167, 69)'  # Green
+    ))
+    fig.add_trace(go.Bar(
+        x=data['Periods Label'],
+        y=-data['Deaths_5'],
+        name='Deaths',
+        marker_color='rgb(220, 53, 69)'  # Red
+    ))
+    fig.add_trace(go.Scatter(
+        x=data['Periods Label'],
+        y=data['NaturalIncrease_7'],
+        name='Natural change',
+        line=dict(color='rgb(255, 165, 0)', width=2),  # Orange color
+        mode='lines+markers'
+    ))
+    fig.update_layout(
+        title='Natural Population Change',
+        xaxis_title='Year',
+        yaxis_title='Number of People',
+        barmode='relative',
+        yaxis=dict(tickformat=','),
+        xaxis=dict(dtick=1),  # Show all years
+        height=400
+    )
+    return fig
+
+def create_total_moves_chart(data: pd.DataFrame):
+    fig = go.Figure()
+    
+    # Total Arrivals and components
+    fig.add_trace(go.Bar(
+        x=data['Periods Label'],
+        y=data['DueToImmigration_10'],
+        name='International Immigration',
+        marker_color='rgb(135, 206, 250)',  # Light blue
+        offsetgroup=0
+    ))
+    fig.add_trace(go.Bar(
+        x=data['Periods Label'],
+        y=data['DueToIntermunicipalMoves_11'],
+        name='Municipal Arrivals',
+        marker_color='rgb(30, 144, 255)',  # Darker blue
+        offsetgroup=0
+    ))
+    
+    # Total Departures and components (negative values)
+    fig.add_trace(go.Bar(
+        x=data['Periods Label'],
+        y=-data['DueToEmigrationIncludingAdministr_14'],
+        name='International Emigration',
+        marker_color='rgb(0, 51, 153)',  # Dark blue
+        offsetgroup=1
+    ))
+    fig.add_trace(go.Bar(
+        x=data['Periods Label'],
+        y=-data['DueToIntermunicipalMoves_16'],
+        name='Municipal Departures',
+        marker_color='rgb(25, 25, 112)',  # Midnight blue
+        offsetgroup=1
+    ))
+    
+    # Balance line
+    fig.add_trace(go.Scatter(
+        x=data['Periods Label'],
+        y=data['TotalArrivals_8'] - data['TotalDeparturesIncludingAdministra_12'],
+        name='Net Flow',
+        line=dict(color='rgb(255, 165, 0)', width=2),  # Orange
+        mode='lines+markers'
+    ))
+    
+    fig.update_layout(
+        title='Population Flows',
+        xaxis_title='Year',
+        yaxis_title='Number of People',
+        barmode='relative',
+        yaxis=dict(tickformat=','),
+        xaxis=dict(dtick=1),  # Show all years
+        height=400
+    )
+    return fig
+
+def display_metrics(year_data, prev_year_data, is_first_year=False):
+    # Population and Density
+    st.subheader("Population")
+    
+    # Total Population with density below
+    pop_change = year_data['PopulationOn31December_20'] - prev_year_data['PopulationOn31December_20']
+    pop_change_pct = (pop_change / prev_year_data['PopulationOn31December_20']) * 100
+    st.metric(
+        "Total Population",
+        format_number(year_data['PopulationOn31December_20']),
+        "-" if is_first_year else f"{format_number(pop_change)} ({pop_change_pct:.1f}%)"
+    )
+    st.markdown(
+        f"<p style='font-size: 1rem; color: #666; margin-top: -1rem; margin-left: 1rem;'>{format_number(year_data['PopulationDensity_2'])} people/km²</p>",
+        unsafe_allow_html=True
+    )
+    
+    # Natural Change
+    st.subheader("Natural change")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        nat_change = year_data['NaturalIncrease_7'] - prev_year_data['NaturalIncrease_7']
+        st.metric(
+            "natural change",
+            format_number(year_data['NaturalIncrease_7']),
+            "-" if is_first_year else format_number(nat_change)
+        )
+    with col2:
+        births_change = year_data['LiveBornChildren_3'] - prev_year_data['LiveBornChildren_3']
+        st.metric(
+            "births",
+            format_number(year_data['LiveBornChildren_3']),
+            "-" if is_first_year else format_number(births_change)
+        )
+    with col3:
+        deaths_change = year_data['Deaths_5'] - prev_year_data['Deaths_5']
+        st.metric(
+            "deaths",
+            format_number(year_data['Deaths_5']),
+            "-" if is_first_year else format_number(deaths_change)
+        )
+
+    # Arrivals Section
+    st.subheader("Population movement - people arriving")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        arrivals_change = year_data['TotalArrivals_8'] - prev_year_data['TotalArrivals_8']
+        st.metric(
+            "total arrivals",
+            format_number(year_data['TotalArrivals_8']),
+            "-" if is_first_year else format_number(arrivals_change)
+        )
+    with col2:
+        imm_change = year_data['DueToImmigration_10'] - prev_year_data['DueToImmigration_10']
+        st.metric(
+            "international immigration",
+            format_number(year_data['DueToImmigration_10']),
+            "-" if is_first_year else format_number(imm_change)
+        )
+    with col3:
+        mun_arr_change = year_data['DueToIntermunicipalMoves_11'] - prev_year_data['DueToIntermunicipalMoves_11']
+        st.metric(
+            "municipal arrivals",
+            format_number(year_data['DueToIntermunicipalMoves_11']),
+            "-" if is_first_year else format_number(mun_arr_change)
+        )
+
+    # Departures Section
+    st.subheader("Population movement - people leaving")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        departures_change = year_data['TotalDeparturesIncludingAdministra_12'] - prev_year_data['TotalDeparturesIncludingAdministra_12']
+        st.metric(
+            "total departures",
+            format_number(year_data['TotalDeparturesIncludingAdministra_12']),
+            "-" if is_first_year else format_number(departures_change)
+        )
+    with col2:
+        em_change = year_data['DueToEmigrationIncludingAdministr_14'] - prev_year_data['DueToEmigrationIncludingAdministr_14']
+        st.metric(
+            "international emigration",
+            format_number(year_data['DueToEmigrationIncludingAdministr_14']),
+            "-" if is_first_year else format_number(em_change)
+        )
+    with col3:
+        mun_dep_change = year_data['DueToIntermunicipalMoves_16'] - prev_year_data['DueToIntermunicipalMoves_16']
+        st.metric(
+            "municipal departures",
+            format_number(year_data['DueToIntermunicipalMoves_16']),
+            "-" if is_first_year else format_number(mun_dep_change)
+        )
+
+    # Migration Balances
+    st.subheader("Balances (net effect)")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        total_balance = year_data['TotalArrivals_8'] - year_data['TotalDeparturesIncludingAdministra_12']
+        prev_total_balance = prev_year_data['TotalArrivals_8'] - prev_year_data['TotalDeparturesIncludingAdministra_12']
+        balance_change = total_balance - prev_total_balance
+        st.metric(
+            "total movement balance",
+            format_number(total_balance),
+            "-" if is_first_year else format_number(balance_change)
+        )
+    with col2:
+        int_balance = year_data['DueToImmigration_10'] - year_data['DueToEmigrationIncludingAdministr_14']
+        prev_int_balance = prev_year_data['DueToImmigration_10'] - prev_year_data['DueToEmigrationIncludingAdministr_14']
+        int_balance_change = int_balance - prev_int_balance
+        st.metric(
+            "international migration balance",
+            format_number(int_balance),
+            "-" if is_first_year else format_number(int_balance_change)
+        )
+    with col3:
+        mun_balance = year_data['DueToIntermunicipalMoves_11'] - year_data['DueToIntermunicipalMoves_16']
+        prev_mun_balance = prev_year_data['DueToIntermunicipalMoves_11'] - prev_year_data['DueToIntermunicipalMoves_16']
+        mun_balance_change = mun_balance - prev_mun_balance
+        st.metric(
+            "municipal migration balance",
+            format_number(mun_balance),
+            "-" if is_first_year else format_number(mun_balance_change)
+        )
 
 def main():
+    st.title('Population Dynamics in the Netherlands')
+
+    st.subheader("General insights")
+    st.markdown("The Netherlands has experienced significant demographic shifts from 2012 to 2023, with population growth increasingly driven by international migration rather than natural change."
+            
+            "A striking turning point occurred in 2022 when the country saw its first negative natural population change (-2,608) since records began, as deaths (170,112) exceeded births (167,504)."
+            
+            "This demographic milestone coincided with unprecedented levels of international migration, with net migration reaching +158,992 people in 2022. The trend continued into 2023 with an even larger natural population decline (-5,034) and record-high immigration levels. Municipal movements have remained relatively stable, suggesting internal population distribution patterns are consistent despite external pressures."
+            
+            "The population density has increased from 496 people/km² in 2012 to 529 people/km² in 2023, reflecting growing urbanization pressures. These trends indicate a fundamental shift in Dutch population dynamics, where future growth is becoming increasingly dependent on international migration to offset the declining natural population growth."
+            )
+
+    # Load data
     df = load_data()
-
-    # ------------------------------------------------------------------
-    # Preprocess data for the Overall Trend and Yearly Statistics
-    # ------------------------------------------------------------------
-    # Keep only totals for sex == 'Total male and female' and 'Characteristics Label' == 'Total'
-    yearly_totals = df[
-        (df['Sex Label'] == 'Total male and female') &
-        (df['Characteristics Label'] == 'Total')
-    ].copy()
-
-    # Rename columns and ensure Year is integer
-    yearly_totals['Period Label'] = yearly_totals['Period Label'].astype(int)
-    yearly_totals.sort_values(by='Period Label', inplace=True)
-    yearly_totals.rename(columns={
-        'Period Label': 'Year',
-        'VictimsMurderManslaughter_1': 'Victims',
-        'VictimsMurderManslaughterRelative_2': 'RatePerMillion'
-    }, inplace=True)
-
-    # ------------------------------------------------------------------
-    # SECTION 1: Overall Trend and Yearly Statistics (NO Year Selection)
-    # ------------------------------------------------------------------
-    st.title("Crime in NL (Murders) from 1996 - 2023")
-    st.header("Overall trend")
-
-    chart_choice = st.radio(
-        "Select which metric(s) to display:",
-        ("Total victims", "Rate per million", "Both")
-    )
-
-    # Base line chart
-    base_chart = alt.Chart(yearly_totals).mark_line(point=True).encode(
-        x=alt.X('Year:O', title='year')
-    )
-
-    layers = []
-    if chart_choice in ("Total victims", "Both"):
-        line_victims = base_chart.encode(
-            y=alt.Y('Victims:Q', title='number of victims'),
-            color=alt.value('#8884d8'),
-            tooltip=[alt.Tooltip('Year:O'), alt.Tooltip('Victims:Q')]
-        ).properties(title="Total victims")
-        layers.append(line_victims)
-
-    if chart_choice in ("Rate per million", "Both"):
-        line_rate = base_chart.encode(
-            y=alt.Y('RatePerMillion:Q', title='rate per million'),
-            color=alt.value('#82ca9d'),
-            tooltip=[alt.Tooltip('Year:O'), alt.Tooltip('RatePerMillion:Q')]
-        ).properties(title="Rate per million")
-        layers.append(line_rate)
-
-    if layers:
-        combined_chart = alt.layer(*layers).resolve_scale(y='independent').properties(
-            width='container',
-            height=400
-        )
-        st.altair_chart(combined_chart, use_container_width=True)
-
-    # ------------------------------------------------------------------
-    # SECTION intro: insights
-    # ------------------------------------------------------------------
-    st.header("Insights from dataset")
-    st.markdown("""
-        Based on the data analysis of murder and manslaughter cases in the Netherlands from 1996 to 2023, there has been a significant overall decline in both total victims and rate per million inhabitants. 
-                
-        The numbers dropped from a peak of 264 victims (16.5 per million) in 2001 to 125 victims (7.0 per million) in 2023, representing nearly a 53% decrease.
-
-        Stabbing has consistently been the most common method, while private residences remain the primary location for these incidents.
-
-        Age-wise, victims between 20-49 years have been most affected throughout the period, though the proportion of elderly victims (60+ years) has shown concerning increases in recent years.
-
-        There's also a persistent gender disparity, with males consistently representing the majority of victims, though the gap has narrowed somewhat in recent years.
-    """)
-
-    # ------------------------------------------------------------------
-    # SECTION 2: Detailed Statistics (BY YEAR)
-    # ------------------------------------------------------------------
-    st.header("Detailed statistics by year")
-
-    # Add 'Total (All Years)' as the first option
-    all_years = ['Total (All Years)'] + sorted(yearly_totals['Year'].unique())
-    selected_year = st.selectbox("Select year:", all_years, index=len(all_years) - 1)
-
-    # Modify the data selection based on whether Total is selected
-    if selected_year == 'Total (All Years)':
-        # Calculate total victims and average rate
-        total_victims = yearly_totals["Victims"].sum()
-        avg_rate = yearly_totals["RatePerMillion"].mean()
-        
-        # Display metrics for total
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total victims (all years)", f"{total_victims:,}")
-        with col2:
-            st.metric("Average rate per million", f"{avg_rate:.1f}")
-        with col3:
-            st.metric("Years covered", f"{len(yearly_totals)} years")
-
-        # Aggregate the data for each category (removing the year dimension)
-        df_methods = df[
-            (df["Sex Label"] == "Total male and female") &
-            (df["Characteristics Label"].str.contains("Method:", case=False, na=False))
-        ].groupby("Characteristics Label")["VictimsMurderManslaughter_1"].sum().reset_index()
-        df_methods["Method"] = df_methods["Characteristics Label"].str.replace("Method:", "").str.strip()
-
-        df_age = df[
-            (df["Sex Label"] == "Total male and female") &
-            (df["Characteristics Label"].str.contains("Age:"))
-        ].groupby("Characteristics Label")["VictimsMurderManslaughter_1"].sum().reset_index()
-        df_age["AgeGroup"] = df_age["Characteristics Label"].str.replace("Age:", "").str.strip()
-
-        df_location = df[
-            (df["Sex Label"] == "Total male and female") &
-            (df["Characteristics Label"].str.contains("Location:"))
-        ].groupby("Characteristics Label")["VictimsMurderManslaughter_1"].sum().reset_index()
-        df_location["Location"] = df_location["Characteristics Label"].str.replace("Location:", "").str.strip()
-
-        df_gender = df[
-            (df["Characteristics Label"] == "Total") &
-            (df["Sex Label"] != "Total male and female")
-        ].groupby("Sex Label")["VictimsMurderManslaughter_1"].sum().reset_index()
-
-    else:
-        # Original code for specific year
-        df_year = df[df['Period Label'].astype(int) == selected_year].copy()
-        row_for_selected = yearly_totals[yearly_totals["Year"] == selected_year]
-        if not row_for_selected.empty:
-            year_victims = int(row_for_selected["Victims"].values[0])
-            year_rate = float(row_for_selected["RatePerMillion"].values[0])
-        else:
-            year_victims = None
-            year_rate = None
-
-        # Compare to previous year
-        row_for_previous = yearly_totals[yearly_totals["Year"] == (selected_year - 1)]
-        comparison_text = "N/A"
-        if not row_for_selected.empty and not row_for_previous.empty:
-            prev_victims = row_for_previous["Victims"].values[0]
-            if prev_victims != 0:
-                change = ((year_victims - prev_victims) / prev_victims) * 100
-                sign = "+" if change > 0 else ""
-                comparison_text = f"{sign}{change:.1f}%"
-
-        # Display metrics
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total victims", year_victims if year_victims is not None else "N/A")
-        with col2:
-            st.metric("Rate per million", f"{year_rate:.1f}" if year_rate is not None else "N/A")
-        with col3:
-            st.metric("Compared to previous year", comparison_text)
-
-    st.subheader(f"Breakdown for {'all years' if selected_year == 'Total (All Years)' else selected_year}")
     
-    # Modify the visualization code to handle both cases
-    if selected_year == 'Total (All Years)':
-        # Methods
-        if not df_methods.empty:
-            st.caption("Murder methods (total across all years)")
-            c_meth = alt.Chart(df_methods).mark_bar().encode(
-                y=alt.Y("Method:N", sort="-x", title="method"),
-                x=alt.X("VictimsMurderManslaughter_1:Q", title="total victims"),
-                tooltip=["Method:N", "VictimsMurderManslaughter_1:Q"]
-            ).properties(width="container", height=300)
-            st.altair_chart(c_meth, use_container_width=True)
-
-        # Age
-        if not df_age.empty:
-            st.caption("Victims by age group (total across all years)")
-            # Define the correct age group order
-            age_order = [
-                "younger than 20 years",
-                "20 to 29 years",
-                "30 to 39 years",
-                "40 to 49 years",
-                "50 to 59 years",
-                "60 years or older"
-            ]
-            c_age = alt.Chart(df_age).mark_bar().encode(
-                y=alt.Y("AgeGroup:N", 
-                       sort=age_order,  # Use the defined order
-                       title="age group"),
-                x=alt.X("VictimsMurderManslaughter_1:Q", title="total victims"),
-                tooltip=["AgeGroup:N", "VictimsMurderManslaughter_1:Q"]
-            ).properties(width="container", height=300)
-            st.altair_chart(c_age, use_container_width=True)
-
-        # Location
-        if not df_location.empty:
-            st.caption("Murder locations (total across all years)")
-            c_loc = alt.Chart(df_location).mark_bar().encode(
-                y=alt.Y("Location:N", sort="-x", title="location"),
-                x=alt.X("VictimsMurderManslaughter_1:Q", title="total victims"),
-                tooltip=["Location:N", "VictimsMurderManslaughter_1:Q"]
-            ).properties(width="container", height=300)
-            st.altair_chart(c_loc, use_container_width=True)
-
-        # Gender
-        if not df_gender.empty:
-            st.caption("Victims by gender (total across all years)")
-            c_gen = alt.Chart(df_gender).mark_bar().encode(
-                y=alt.Y("Sex Label:N", sort="-x", title="gender"),
-                x=alt.X("VictimsMurderManslaughter_1:Q", title="total victims"),
-                tooltip=["Sex Label:N", "VictimsMurderManslaughter_1:Q"]
-            ).properties(width="container", height=300)
-            st.altair_chart(c_gen, use_container_width=True)
+    # View selector
+    view_type = st.radio("Select View", ["National", "Regional"], horizontal=True)
+    
+    if view_type == "National":
+        data_to_plot = df[df['Regions Label'] == 'The Netherlands'].sort_values('Periods Label')
+        region_name = "The Netherlands"
     else:
-        # Original visualization code for specific year
-        # 1) Murder Methods
-        df_methods = df_year[
-            (df_year["Sex Label"] == "Total male and female") &
-            (df_year["Characteristics Label"].str.contains("Method:", case=False, na=False))
-        ].copy()
-        df_methods["Method"] = df_methods["Characteristics Label"].str.replace("Method:", "", case=False).str.strip()
-
-        # 2) Victims by Age Group
-        df_age = df_year[
-            (df_year["Sex Label"] == "Total male and female") &
-            (df_year["Characteristics Label"].str.contains("Age:"))
-        ].copy()
-        df_age["AgeGroup"] = df_age["Characteristics Label"].str.replace("Age:", "").str.strip()
-
-        # 3) Murder Locations
-        df_location = df_year[
-            (df_year["Sex Label"] == "Total male and female") &
-            (df_year["Characteristics Label"].str.contains("Location:"))
-        ].copy()
-        df_location["Location"] = df_location["Characteristics Label"].str.replace("Location:", "").str.strip()
-
-        # 4) Victims by Gender
-        df_gender = df_year[
-            (df_year["Characteristics Label"] == "Total") &
-            (df_year["Sex Label"] != "Total male and female")
-        ].copy()
-
-        # Methods
-        if not df_methods.empty:
-            st.caption("Murder methods")
-            c_meth = alt.Chart(df_methods).mark_bar().encode(
-                y=alt.Y("Method:N", sort="-x", title="method"),
-                x=alt.X("VictimsMurderManslaughter_1:Q", title="victims"),
-                tooltip=["Method:N", "VictimsMurderManslaughter_1:Q"]
-            ).properties(width="container", height=300)
-            st.altair_chart(c_meth, use_container_width=True)
-
-        # Age
-        if not df_age.empty:
-            st.caption("Victims by age group")
-            # Define the correct age group order
-            age_order = [
-                "younger than 20 years",
-                "20 to 29 years",
-                "30 to 39 years",
-                "40 to 49 years",
-                "50 to 59 years",
-                "60 years or older"
-            ]
-            c_age = alt.Chart(df_age).mark_bar().encode(
-                y=alt.Y("AgeGroup:N", 
-                       sort=age_order,  # Use the defined order
-                       title="age group"),
-                x=alt.X("VictimsMurderManslaughter_1:Q", title="victims"),
-                tooltip=["AgeGroup:N", "VictimsMurderManslaughter_1:Q"]
-            ).properties(width="container", height=300)
-            st.altair_chart(c_age, use_container_width=True)
-
-        # Location
-        if not df_location.empty:
-            st.caption("Murder locations")
-            c_loc = alt.Chart(df_location).mark_bar().encode(
-                y=alt.Y("Location:N", sort="-x", title="location"),
-                x=alt.X("VictimsMurderManslaughter_1:Q", title="victims"),
-                tooltip=["Location:N", "VictimsMurderManslaughter_1:Q"]
-            ).properties(width="container", height=300)
-            st.altair_chart(c_loc, use_container_width=True)
-
-        # Gender
-        if not df_gender.empty:
-            st.caption("Victims by gender")
-            c_gen = alt.Chart(df_gender).mark_bar().encode(
-                y=alt.Y("Sex Label:N", sort="-x", title="gender"),
-                x=alt.X("VictimsMurderManslaughter_1:Q", title="victims"),
-                tooltip=["Sex Label:N", "VictimsMurderManslaughter_1:Q"]
-            ).properties(width="container", height=300)
-            st.altair_chart(c_gen, use_container_width=True)
-
-    # ------------------------------------------------------------------
-    # SECTION 3: Detailed View (All Years) -- Now with Year on X-axis
-    # and a toggle (raw vs. 100%) for each of the four metrics
-    # ------------------------------------------------------------------
-    st.header("Detailed view (all years)")
-
-    bar_chart_type = st.radio(
-        "Select bar chart view type:",
-        ("Percentage of total", "Totals"),
-    )
-    stack_type = None if bar_chart_type == "Totals" else "normalize"
-
-    # 1) Methods
-    df_methods_all = df[
-        (df['Sex Label'] == 'Total male and female') &
-        (df['Characteristics Label'].str.contains('Method:'))
-    ].copy()
-    df_methods_all["Year"] = df_methods_all["Period Label"].astype(int)
-    df_methods_all["Method"] = df_methods_all["Characteristics Label"].str.replace("Method:", "").str.strip()
-
-    # Format tooltip based on chart type
-    if bar_chart_type == "Percentage of total":
-        # Create a normalized version of the data
-        df_methods_all_pct = df_methods_all.copy()
-        yearly_totals = df_methods_all.groupby('Year')['VictimsMurderManslaughter_1'].sum().reset_index()
-        df_methods_all_pct = df_methods_all_pct.merge(yearly_totals, on='Year', suffixes=('', '_total'))
-        df_methods_all_pct['percentage'] = df_methods_all_pct['VictimsMurderManslaughter_1'] / df_methods_all_pct['VictimsMurderManslaughter_1_total']
-
-        tooltip_format = [
-            alt.Tooltip("Year:O", title="Year"),
-            alt.Tooltip("Method:N", title="Method"),
-            alt.Tooltip("percentage:Q", format='.1%', title="Percentage of Total")
-        ]
+        # Region type selector
+        region_type = st.selectbox(
+            "Select Region Level",
+            ["Landsdelen (LD)", "Provinces (PV)", "COROP Regions (CR)", "Municipalities"]
+        )
         
-        c_methods_all = alt.Chart(df_methods_all_pct).mark_bar().encode(
-            x=alt.X("Year:O", title="year"),
-            y=alt.Y("percentage:Q", 
-                    stack="zero",
-                    title="percentage of total",
-                    axis=alt.Axis(format='%')),
-            color=alt.Color("Method:N", legend=alt.Legend(title="Method")),
-            tooltip=tooltip_format
-        )
-    else:
-        tooltip_format = [
-            alt.Tooltip("Year:O", title="Year"),
-            alt.Tooltip("Method:N", title="Method"),
-            alt.Tooltip("VictimsMurderManslaughter_1:Q", format=',d', title="Number of Victims")
-        ]
+        # Filter regions based on type
+        if region_type == "Municipalities":
+            regions = df[~df['Regions Label'].str.contains('\\(') & 
+                       (df['Regions Label'] != 'The Netherlands')]
+            search_term = st.text_input("Search municipality")
+            filtered_regions = [r for r in sorted(regions['Regions Label'].unique())
+                              if search_term.lower() in r.lower()] if search_term else sorted(regions['Regions Label'].unique())
+            selected_region = st.selectbox("Select Municipality", filtered_regions)
+        else:
+            type_code = region_type[-3:-1]
+            regions = df[df['Regions Label'].str.contains(f'\\({type_code}\\)')]
+            selected_region = st.selectbox(
+                f"Select {region_type.split(' ')[0]}", 
+                sorted(regions['Regions Label'].unique())
+            )
         
-        c_methods_all = alt.Chart(df_methods_all).mark_line(point=True).encode(
-            x=alt.X("Year:O", title="year"),
-            y=alt.Y("VictimsMurderManslaughter_1:Q", 
-                    title="number of victims",
-                    axis=alt.Axis(format=',d')),
-            color=alt.Color("Method:N", legend=alt.Legend(title="Method")),
-            tooltip=tooltip_format
-        )
-
-    st.altair_chart(
-        c_methods_all.properties(width="container", height=300, title="Murder methods over years"), 
-        use_container_width=True
-    )
-
-    # 2) Age Groups
-    df_age_all = df[
-        (df['Sex Label'] == 'Total male and female') &
-        (df['Characteristics Label'].str.contains('Age:'))
-    ].copy()
-    df_age_all["Year"] = df_age_all["Period Label"].astype(int)
-    df_age_all["AgeGroup"] = df_age_all["Characteristics Label"].str.replace("Age:", "").str.strip()
-
-    if bar_chart_type == "Percentage of total":
-        # Create a normalized version of the data
-        df_age_all_pct = df_age_all.copy()
-        yearly_totals = df_age_all.groupby('Year')['VictimsMurderManslaughter_1'].sum().reset_index()
-        df_age_all_pct = df_age_all_pct.merge(yearly_totals, on='Year', suffixes=('', '_total'))
-        df_age_all_pct['percentage'] = df_age_all_pct['VictimsMurderManslaughter_1'] / df_age_all_pct['VictimsMurderManslaughter_1_total']
-
-        # Add an order column based on age_order list (reversed enumeration)
-        order_dict = {age: len(age_order) - i for i, age in enumerate(age_order)}
-        df_age_all_pct['order'] = df_age_all_pct['AgeGroup'].map(order_dict)
-
-        tooltip_format = [
-            alt.Tooltip("Year:O", title="Year"),
-            alt.Tooltip("AgeGroup:N", title="Age Group"),
-            alt.Tooltip("percentage:Q", format='.1%', title="Percentage of Total")
-        ]
+        data_to_plot = df[df['Regions Label'] == selected_region].sort_values('Periods Label')
+        region_name = selected_region
+    
+    # Population Development Chart
+    st.plotly_chart(create_population_chart(data_to_plot, region_name), 
+                    use_container_width=True, 
+                    key="population_chart")
+    
+    # Natural Change Chart
+    st.plotly_chart(create_natural_change_chart(data_to_plot), 
+                    use_container_width=True,
+                    key="natural_change_chart")
+    
+    # Total Moves Chart with Components
+    st.plotly_chart(create_total_moves_chart(data_to_plot),
+                    use_container_width=True,
+                    key="total_moves_chart")
+    
+    # Year selector below charts
+    available_years = sorted(data_to_plot['Periods Label'].unique(), reverse=True)
+    selected_year = st.selectbox("Select year for detailed statistics", available_years)
+    
+    # Get selected year data and previous year for comparisons
+    year_data = data_to_plot[data_to_plot['Periods Label'] == selected_year].iloc[0]
+    
+    # Handle case when previous year doesn't exist
+    prev_year_df = data_to_plot[data_to_plot['Periods Label'] == selected_year - 1]
+    if len(prev_year_df) > 0:
+        prev_year_data = prev_year_df.iloc[0]
+        # Display metrics with comparison
+        display_metrics(year_data, prev_year_data, is_first_year=False)
+    else:
+        # Create a copy of current year data for comparison, setting all values to 0
+        prev_year_data = year_data.copy()
+        for col in prev_year_data.index:
+            if isinstance(prev_year_data[col], (int, float)):
+                prev_year_data[col] = 0
         
-        c_age_all = alt.Chart(df_age_all_pct).mark_bar().encode(
-            x=alt.X("Year:O", title="year"),
-            y=alt.Y("percentage:Q", 
-                    stack="zero",
-                    title="percentage of total",
-                    axis=alt.Axis(format='%')),
-            color=alt.Color(
-                "AgeGroup:N", 
-                scale=alt.Scale(domain=age_order),
-                legend=alt.Legend(
-                    title="Age Group",
-                    orient="right",
-                    symbolLimit=len(age_order)
-                )
-            ),
-            order=alt.Order(
-                "order:Q",
-                sort="ascending"
-            ),
-            tooltip=tooltip_format
-        )
-    else:
-        tooltip_format = [
-            alt.Tooltip("Year:O", title="Year"),
-            alt.Tooltip("AgeGroup:N", title="Age Group"),
-            alt.Tooltip("VictimsMurderManslaughter_1:Q", format=',d', title="Number of Victims")
-        ]
-        c_age_all = alt.Chart(df_age_all).mark_line(point=True).encode(
-            x=alt.X("Year:O", title="year"),
-            y=alt.Y("VictimsMurderManslaughter_1:Q", 
-                    title="number of victims",
-                    axis=alt.Axis(format=',d')),
-            color=alt.Color("AgeGroup:N", 
-                           sort=age_order,
-                           legend=alt.Legend(title="Age Group")),
-            tooltip=tooltip_format
-        )
-
-    st.altair_chart(
-        c_age_all.properties(width="container", height=300, title="Victims by age group over years"), 
-        use_container_width=True
-    )
-
-    # 3) Locations
-    df_loc_all = df[
-        (df['Sex Label'] == 'Total male and female') &
-        (df['Characteristics Label'].str.contains('Location:'))
-    ].copy()
-    df_loc_all["Year"] = df_loc_all["Period Label"].astype(int)
-    df_loc_all["Location"] = df_loc_all["Characteristics Label"].str.replace("Location:", "").str.strip()
-
-    if bar_chart_type == "Percentage of total":
-        tooltip_format = [
-            alt.Tooltip("Year:O", title="Year"),
-            alt.Tooltip("Location:N", title="Location"),
-            alt.Tooltip("VictimsMurderManslaughter_1:Q", format='.1%', title="Percentage")
-        ]
-        c_loc_all = alt.Chart(df_loc_all).mark_bar().encode(
-            x=alt.X("Year:O", title="year"),
-            y=alt.Y("VictimsMurderManslaughter_1:Q", 
-                    stack=stack_type, 
-                    title="percentage",
-                    axis=alt.Axis(format='.0%')),
-            color=alt.Color("Location:N", legend=alt.Legend(title="Location")),
-            tooltip=tooltip_format
-        )
-    else:
-        tooltip_format = [
-            alt.Tooltip("Year:O", title="Year"),
-            alt.Tooltip("Location:N", title="Location"),
-            alt.Tooltip("VictimsMurderManslaughter_1:Q", format=',d', title="Number of Victims")
-        ]
-        c_loc_all = alt.Chart(df_loc_all).mark_line(point=True).encode(
-            x=alt.X("Year:O", title="year"),
-            y=alt.Y("VictimsMurderManslaughter_1:Q", 
-                    title="number of victims",
-                    axis=alt.Axis(format=',d')),
-            color=alt.Color("Location:N", legend=alt.Legend(title="Location")),
-            tooltip=tooltip_format
-        )
-
-    st.altair_chart(
-        c_loc_all.properties(width="container", height=300, title="Murder locations over years"), 
-        use_container_width=True
-    )
-
-    # 4) Gender
-    df_gender_all = df[
-        (df['Characteristics Label'] == 'Total') &
-        (df['Sex Label'] != 'Total male and female')
-    ].copy()
-    df_gender_all["Year"] = df_gender_all["Period Label"].astype(int)
-
-    if bar_chart_type == "Percentage of total":
-        tooltip_format = [
-            alt.Tooltip("Year:O", title="Year"),
-            alt.Tooltip("Sex Label:N", title="Gender"),
-            alt.Tooltip("VictimsMurderManslaughter_1:Q", format='.1%', title="Percentage")
-        ]
-        c_gen_all = alt.Chart(df_gender_all).mark_bar().encode(
-            x=alt.X("Year:O", title="year"),
-            y=alt.Y("VictimsMurderManslaughter_1:Q", 
-                    stack=stack_type, 
-                    title="percentage",
-                    axis=alt.Axis(format='.0%')),
-            color=alt.Color("Sex Label:N", legend=alt.Legend(title="Gender")),
-            tooltip=tooltip_format
-        )
-    else:
-        tooltip_format = [
-            alt.Tooltip("Year:O", title="Year"),
-            alt.Tooltip("Sex Label:N", title="Gender"),
-            alt.Tooltip("VictimsMurderManslaughter_1:Q", format=',d', title="Number of Victims")
-        ]
-        c_gen_all = alt.Chart(df_gender_all).mark_line(point=True).encode(
-            x=alt.X("Year:O", title="year"),
-            y=alt.Y("VictimsMurderManslaughter_1:Q", 
-                    title="number of victims",
-                    axis=alt.Axis(format=',d')),
-            color=alt.Color("Sex Label:N", legend=alt.Legend(title="Gender")),
-            tooltip=tooltip_format
-        )
-
-    st.altair_chart(
-        c_gen_all.properties(width="container", height=300, title="Victims by gender over years"), 
-        use_container_width=True
-    )
+        st.warning(f"No data available for year {selected_year - 1}. Showing current year values without comparisons.")
+        display_metrics(year_data, prev_year_data, is_first_year=True)
 
     # ------------------------------------------------------------------
     # Footer
     # ------------------------------------------------------------------
     st.markdown(
-        'Made by [Valentin Mendez](https://www.linkedin.com/in/valentemendez/) using information from the [CBS StatLine](https://opendata.cbs.nl/statline/portal.html?_la=en&_catalog=CBS&tableId=84726ENG&_theme=1152)'
+        'Made by [Valentin Mendez](https://www.linkedin.com/in/valentemendez/) using information from the [CBS StatLine](https://opendata.cbs.nl/statline/portal.html?_la=en&_catalog=CBS&tableId=37259eng&_theme=1177)'
     )
 
     # Hide the "Made with Streamlit" footer
