@@ -254,11 +254,11 @@ def main():
     st.subheader("General insights")
     st.markdown("The Netherlands has experienced significant demographic shifts from 2012 to 2023, with population growth increasingly driven by international migration rather than natural change."
             
-            "A striking turning point occurred in 2022 when the country saw its first negative natural population change (-2,608) since records began, as deaths (170,112) exceeded births (167,504)."
+            " A striking turning point occurred in 2022 when the country saw its first negative natural population change (-2,608) since records began, as deaths (170,112) exceeded births (167,504)."
             
-            "This demographic milestone coincided with unprecedented levels of international migration, with net migration reaching +158,992 people in 2022. The trend continued into 2023 with an even larger natural population decline (-5,034) and record-high immigration levels. Municipal movements have remained relatively stable, suggesting internal population distribution patterns are consistent despite external pressures."
+            " This demographic milestone coincided with unprecedented levels of international migration, with net migration reaching +158,992 people in 2022. The trend continued into 2023 with an even larger natural population decline (-5,034) and record-high immigration levels. Municipal movements have remained relatively stable, suggesting internal population distribution patterns are consistent despite external pressures."
             
-            "The population density has increased from 496 people/km² in 2012 to 529 people/km² in 2023, reflecting growing urbanization pressures. These trends indicate a fundamental shift in Dutch population dynamics, where future growth is becoming increasingly dependent on international migration to offset the declining natural population growth."
+            " The population density has increased from 496 people/km² in 2012 to 529 people/km² in 2023, reflecting growing urbanization pressures. These trends indicate a fundamental shift in Dutch population dynamics, where future growth is becoming increasingly dependent on international migration to offset the declining natural population growth."
             )
 
     # Load data
