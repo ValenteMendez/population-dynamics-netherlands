@@ -3,6 +3,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
+import datetime
 
 # Page config
 st.set_page_config(page_title="Population Dynamics in the Netherlands", page_icon="👥", layout="wide")
@@ -248,106 +251,394 @@ def display_metrics(year_data, prev_year_data, is_first_year=False):
             "-" if is_first_year else format_number(deaths_change)
         )
 
+def create_prediction_chart(df: pd.DataFrame):
+    # Get provinces data (excluding national data)
+    provinces = df[df['Regions Label'].str.contains('\\(PV\\)')].copy()
+    
+    # Get the last year from historical data and create future years list
+    last_historical_year = df['Periods Label'].max()
+    future_years = list(range(last_historical_year + 1, last_historical_year + 11))
+    
+    # Create predictions for each province
+    all_predictions = []
+    
+    for province in provinces['Regions Label'].unique():
+        province_data = provinces[provinces['Regions Label'] == province].copy()
+        
+        # Prepare X (years) and y (population)
+        X = province_data['Periods Label'].values.reshape(-1, 1)
+        y = province_data['PopulationOn31December_20'].values
+        
+        # Create and fit polynomial model (degree=2 for curved predictions)
+        poly = PolynomialFeatures(degree=2)
+        X_poly = poly.fit_transform(X)
+        model = LinearRegression()
+        model.fit(X_poly, y)
+        
+        # Generate future predictions
+        future_X = np.array(future_years).reshape(-1, 1)
+        future_X_poly = poly.transform(future_X)
+        predictions = model.predict(future_X_poly)
+        
+        all_predictions.append(predictions)
+    
+    # Sum up all provincial predictions
+    total_predictions = np.sum(all_predictions, axis=0)
+    
+    # Create the prediction chart
+    fig = go.Figure()
+    
+    # Historical national data
+    national_data = df[df['Regions Label'] == 'The Netherlands'].sort_values('Periods Label')
+    
+    # Add historical data
+    fig.add_trace(go.Scatter(
+        x=national_data['Periods Label'],
+        y=national_data['PopulationOn31December_20'],
+        mode='lines+markers',
+        name='Historical',
+        line=dict(color='rgb(0, 123, 255)'),
+        hovertemplate='Year: %{x}<br>Population: %{y:,.0f}<extra></extra>'
+    ))
+    
+    # Add prediction line
+    fig.add_trace(go.Scatter(
+        x=future_years,
+        y=total_predictions,
+        mode='lines+markers',
+        name='Prediction',
+        line=dict(color='rgb(255, 99, 132)', dash='dash'),
+        hovertemplate='Year: %{x}<br>Population: %{y:,.0f}<extra></extra>'
+    ))
+    
+    # Add confidence interval with no hover info
+    confidence_x = future_years + future_years[::-1]
+    confidence_y = np.concatenate([total_predictions * 1.05, (total_predictions * 0.95)[::-1]])
+    fig.add_trace(go.Scatter(
+        x=confidence_x,
+        y=confidence_y,
+        fill='toself',
+        fillcolor='rgba(255, 99, 132, 0.2)',
+        line=dict(color='rgba(255, 99, 132, 0)'),
+        name='Confidence Interval',
+        showlegend=True,
+        hoverinfo='skip'
+    ))
+    
+    fig.update_layout(
+        title='Population Projection for the Netherlands',
+        xaxis_title='Year',
+        yaxis_title='Population',
+        yaxis=dict(tickformat=','),
+        hovermode='x unified',
+        height=600
+    )
+    
+    return fig
+
+def create_provincial_prediction_chart(df: pd.DataFrame, selected_provinces):
+    fig = go.Figure()
+    
+    # Get the last year from historical data and create future years list
+    last_historical_year = df['Periods Label'].max()
+    future_years = list(range(last_historical_year + 1, last_historical_year + 11))
+    
+    for province in selected_provinces:
+        # Get historical data for the province
+        province_data = df[df['Regions Label'] == province].sort_values('Periods Label')
+        
+        # Prepare data for prediction
+        X = province_data['Periods Label'].values.reshape(-1, 1)
+        y = province_data['PopulationOn31December_20'].values
+        
+        # Create and fit polynomial model
+        poly = PolynomialFeatures(degree=2)
+        X_poly = poly.fit_transform(X)
+        model = LinearRegression()
+        model.fit(X_poly, y)
+        
+        # Generate predictions
+        future_X = np.array(future_years).reshape(-1, 1)
+        future_X_poly = poly.transform(future_X)
+        predictions = model.predict(future_X_poly)
+        
+        # Add historical data
+        fig.add_trace(go.Scatter(
+            x=province_data['Periods Label'],
+            y=province_data['PopulationOn31December_20'],
+            mode='lines+markers',
+            name=f'{province} (Historical)',
+            hovertemplate='Year: %{x}<br>Population: %{y:,.0f}<extra></extra>'
+        ))
+        
+        # Add prediction line
+        fig.add_trace(go.Scatter(
+            x=future_years,
+            y=predictions,
+            mode='lines+markers',
+            name=f'{province} (Prediction)',
+            line=dict(dash='dash'),
+            hovertemplate='Year: %{x}<br>Population: %{y:,.0f}<extra></extra>'
+        ))
+    
+    # Add shading to distinguish historical from predicted data
+    fig.add_vrect(
+        x0=last_historical_year,
+        x1=max(future_years),
+        fillcolor="rgba(128, 128, 128, 0.1)",
+        layer="below",
+        line_width=0,
+        annotation_text="Predicted",
+        annotation_position="top left",
+    )
+    
+    fig.update_layout(
+        title='Provincial Population Projections',
+        xaxis_title='Year',
+        yaxis_title='Population',
+        yaxis=dict(tickformat=','),
+        hovermode='x unified',
+        height=600
+    )
+    
+    return fig
+
+def create_municipal_prediction_chart(df: pd.DataFrame, selected_municipalities):
+    fig = go.Figure()
+    
+    # Get the last year from historical data and create future years list
+    last_historical_year = df['Periods Label'].max()
+    future_years = list(range(last_historical_year + 1, last_historical_year + 11))
+    
+    for municipality in selected_municipalities:
+        # Get historical data for the municipality
+        muni_data = df[df['Regions Label'] == municipality].sort_values('Periods Label')
+        
+        # Prepare data for prediction
+        X = muni_data['Periods Label'].values.reshape(-1, 1)
+        y = muni_data['PopulationOn31December_20'].values
+        
+        # Create and fit polynomial model
+        poly = PolynomialFeatures(degree=2)
+        X_poly = poly.fit_transform(X)
+        model = LinearRegression()
+        model.fit(X_poly, y)
+        
+        # Generate predictions
+        future_X = np.array(future_years).reshape(-1, 1)
+        future_X_poly = poly.transform(future_X)
+        predictions = model.predict(future_X_poly)
+        
+        # Add historical data
+        fig.add_trace(go.Scatter(
+            x=muni_data['Periods Label'],
+            y=muni_data['PopulationOn31December_20'],
+            mode='lines+markers',
+            name=f'{municipality} (Historical)',
+            hovertemplate='Year: %{x}<br>Population: %{y:,.0f}<extra></extra>'
+        ))
+        
+        # Add prediction line
+        fig.add_trace(go.Scatter(
+            x=future_years,
+            y=predictions,
+            mode='lines+markers',
+            name=f'{municipality} (Prediction)',
+            line=dict(dash='dash'),
+            hovertemplate='Year: %{x}<br>Population: %{y:,.0f}<extra></extra>'
+        ))
+    
+    # Add shading to distinguish historical from predicted data
+    fig.add_vrect(
+        x0=last_historical_year,
+        x1=max(future_years),
+        fillcolor="rgba(128, 128, 128, 0.1)",
+        layer="below",
+        line_width=0,
+        annotation_text="Predicted",
+        annotation_position="top left",
+    )
+    
+    fig.update_layout(
+        title='Municipal Population Projections',
+        xaxis_title='Year',
+        yaxis_title='Population',
+        yaxis=dict(tickformat=','),
+        hovermode='x unified',
+        height=600
+    )
+    
+    return fig
+
 def main():
     st.title('Population Dynamics in the Netherlands')
-
-    st.subheader("General insights")
-    st.markdown("The Netherlands has experienced significant demographic shifts from 2012 to 2023, with population growth increasingly driven by international migration rather than natural change."
-            
-            " A striking turning point occurred in 2022 when the country saw its first negative natural population change (-2,608) since records began, as deaths (170,112) exceeded births (167,504)."
-            
-            " This demographic milestone coincided with unprecedented levels of international migration, with net migration reaching +158,992 people in 2022. The trend continued into 2023 with an even larger natural population decline (-5,034) and record-high immigration levels. Municipal movements have remained relatively stable, suggesting internal population distribution patterns are consistent despite external pressures."
-            
-            " The population density has increased from 496 people/km² in 2012 to 529 people/km² in 2023, reflecting growing urbanization pressures. These trends indicate a fundamental shift in Dutch population dynamics, where future growth is becoming increasingly dependent on international migration to offset the declining natural population growth."
-            )
-
-    # Load data
-    df = load_data()
     
-    # View selector
-    view_type = st.radio("Select View", ["National", "Regional"], horizontal=True)
+    # Modified view selector to use "Forecast" instead of "Prediction"
+    view_type = st.radio("Select View", ["National", "Regional", "Forecast"], horizontal=True)
     
-    if view_type == "National":
-        data_to_plot = df[df['Regions Label'] == 'The Netherlands'].sort_values('Periods Label')
-        region_name = "The Netherlands"
-    else:
-        # Region type selector
-        region_type = st.selectbox(
-            "Select Region Level",
-            ["Landsdelen (LD)", "Provinces (PV)", "COROP Regions (CR)", "Municipalities"]
+    if view_type == "Forecast":
+        st.subheader("Population projections")
+        st.markdown("""
+        This projection is based on historical trends from provincial data and uses a polynomial regression model. 
+        The prediction:
+        - Aggregates individual predictions for each province
+        - Shows a confidence interval (±5%)
+        - Takes into account regional growth patterns
+        
+        **Note**: This is a simplified model for illustration. Actual population projections should consider many 
+        additional factors such as:
+        - Immigration policies
+        - Economic conditions
+        - Housing availability
+        - Birth/death rates
+        - Age distribution
+        """)
+        
+        # Load data and create national prediction chart
+        df = load_data()
+        st.plotly_chart(create_prediction_chart(df), use_container_width=True)
+        
+        # Provincial comparison with specific defaults
+        st.subheader("Provincial Comparisons")
+        provinces = sorted(df[df['Regions Label'].str.contains('\\(PV\\)')]['Regions Label'].unique())
+        default_provinces = [
+            'Noord-Holland (PV)',
+            'Zuid-Holland (PV)',
+            'Fryslân (PV)'
+        ]
+        selected_provinces = st.multiselect(
+            "Select provinces to compare",
+            provinces,
+            default=default_provinces
         )
         
-        # Filter regions based on type
-        if region_type == "Municipalities":
-            regions = df[~df['Regions Label'].str.contains('\\(') & 
-                       (df['Regions Label'] != 'The Netherlands')]
-            search_term = st.text_input("Search municipality")
-            filtered_regions = [r for r in sorted(regions['Regions Label'].unique())
-                              if search_term.lower() in r.lower()] if search_term else sorted(regions['Regions Label'].unique())
-            selected_region = st.selectbox("Select Municipality", filtered_regions)
+        if selected_provinces:
+            st.plotly_chart(create_provincial_prediction_chart(df, selected_provinces), use_container_width=True)
         else:
-            type_code = region_type[-3:-1]
-            regions = df[df['Regions Label'].str.contains(f'\\({type_code}\\)')]
-            selected_region = st.selectbox(
-                f"Select {region_type.split(' ')[0]}", 
-                sorted(regions['Regions Label'].unique())
-            )
+            st.info("Please select at least one province to see the comparison.")
         
-        data_to_plot = df[df['Regions Label'] == selected_region].sort_values('Periods Label')
-        region_name = selected_region
-    
-    # Population Development Chart
-    st.plotly_chart(create_population_chart(data_to_plot, region_name), 
-                    use_container_width=True, 
-                    key="population_chart")
-    
-    # Total Moves Chart with Components
-    st.plotly_chart(create_total_moves_chart(data_to_plot),
-                    use_container_width=True,
-                    key="total_moves_chart")
-    
-    # Natural Change Chart
-    st.plotly_chart(create_natural_change_chart(data_to_plot), 
-                    use_container_width=True,
-                    key="natural_change_chart")
-    
-    # Year selector below charts
-    available_years = sorted(data_to_plot['Periods Label'].unique(), reverse=True)
-    selected_year = st.selectbox("Select year for detailed statistics", available_years)
-    
-    # Get selected year data and previous year for comparisons
-    year_data = data_to_plot[data_to_plot['Periods Label'] == selected_year].iloc[0]
-    
-    # Handle case when previous year doesn't exist
-    prev_year_df = data_to_plot[data_to_plot['Periods Label'] == selected_year - 1]
-    if len(prev_year_df) > 0:
-        prev_year_data = prev_year_df.iloc[0]
-        # Display metrics with comparison
-        display_metrics(year_data, prev_year_data, is_first_year=False)
+        # Municipal comparison with specific defaults
+        st.subheader("Municipal Comparisons")
+        # Filter municipalities more carefully to avoid confusion with provinces
+        municipalities = sorted(df[
+            (~df['Regions Label'].str.contains('\\(', na=False)) &  # No parentheses (not a region/province)
+            (df['Regions Label'] != 'The Netherlands') &  # Not the country
+            (~df['Regions Label'].str.contains('\\(PV\\)', na=False))  # Not a province
+        ]['Regions Label'].unique())
+        
+        search_term = st.text_input("Search municipalities")
+        filtered_municipalities = [m for m in municipalities 
+                                 if search_term.lower() in m.lower()] if search_term else municipalities
+        
+        default_municipalities = ['Amsterdam', 'Rotterdam', 'The Hague']
+        selected_municipalities = st.multiselect(
+            "Select municipalities to compare",
+            filtered_municipalities,
+            default=default_municipalities
+        )
+        
+        if selected_municipalities:
+            st.plotly_chart(create_municipal_prediction_chart(df, selected_municipalities), use_container_width=True)
+        else:
+            st.info("Please select at least one municipality to see the comparison.")
+        
     else:
-        # Create a copy of current year data for comparison, setting all values to 0
-        prev_year_data = year_data.copy()
-        for col in prev_year_data.index:
-            if isinstance(prev_year_data[col], (int, float)):
-                prev_year_data[col] = 0
+        # Only show General insights in National view
+        if view_type == "National":
+            st.subheader("General insights")
+            st.markdown("The Netherlands has experienced significant demographic shifts from 2012 to 2023, with population growth increasingly driven by international migration rather than natural change."
+                
+                " A striking turning point occurred in 2022 when the country saw its first negative natural population change (-2,608) since records began, as deaths (170,112) exceeded births (167,504)."
+                
+                " This demographic milestone coincided with unprecedented levels of international migration, with net migration reaching +158,992 people in 2022. The trend continued into 2023 with an even larger natural population decline (-5,034) and record-high immigration levels. Municipal movements have remained relatively stable, suggesting internal population distribution patterns are consistent despite external pressures."
+                
+                " The population density has increased from 496 people/km² in 2012 to 529 people/km² in 2023, reflecting growing urbanization pressures. These trends indicate a fundamental shift in Dutch population dynamics, where future growth is becoming increasingly dependent on international migration to offset the declining natural population growth."
+                )
+
+        # Load data
+        df = load_data()
         
-        st.warning(f"No data available for year {selected_year - 1}. Showing current year values without comparisons.")
-        display_metrics(year_data, prev_year_data, is_first_year=True)
+        if view_type == "National":
+            data_to_plot = df[df['Regions Label'] == 'The Netherlands'].sort_values('Periods Label')
+            region_name = "The Netherlands"
+        else:
+            # Region type selector
+            region_type = st.selectbox(
+                "Select Region Level",
+                ["Landsdelen (LD)", "Provinces (PV)", "COROP Regions (CR)", "Municipalities"]
+            )
+            
+            # Filter regions based on type
+            if region_type == "Municipalities":
+                regions = df[~df['Regions Label'].str.contains('\\(') & 
+                           (df['Regions Label'] != 'The Netherlands')]
+                search_term = st.text_input("Search municipality")
+                filtered_regions = [r for r in sorted(regions['Regions Label'].unique())
+                                  if search_term.lower() in r.lower()] if search_term else sorted(regions['Regions Label'].unique())
+                selected_region = st.selectbox("Select Municipality", filtered_regions)
+            else:
+                type_code = region_type[-3:-1]
+                regions = df[df['Regions Label'].str.contains(f'\\({type_code}\\)')]
+                selected_region = st.selectbox(
+                    f"Select {region_type.split(' ')[0]}", 
+                    sorted(regions['Regions Label'].unique())
+                )
+            
+            data_to_plot = df[df['Regions Label'] == selected_region].sort_values('Periods Label')
+            region_name = selected_region
+        
+        # Population Development Chart
+        st.plotly_chart(create_population_chart(data_to_plot, region_name), 
+                        use_container_width=True, 
+                        key="population_chart")
+        
+        # Total Moves Chart with Components
+        st.plotly_chart(create_total_moves_chart(data_to_plot),
+                        use_container_width=True,
+                        key="total_moves_chart")
+        
+        # Natural Change Chart
+        st.plotly_chart(create_natural_change_chart(data_to_plot), 
+                        use_container_width=True,
+                        key="natural_change_chart")
+        
+        # Year selector below charts
+        available_years = sorted(data_to_plot['Periods Label'].unique(), reverse=True)
+        selected_year = st.selectbox("Select year for detailed statistics", available_years)
+        
+        # Get selected year data and previous year for comparisons
+        year_data = data_to_plot[data_to_plot['Periods Label'] == selected_year].iloc[0]
+        
+        # Handle case when previous year doesn't exist
+        prev_year_df = data_to_plot[data_to_plot['Periods Label'] == selected_year - 1]
+        if len(prev_year_df) > 0:
+            prev_year_data = prev_year_df.iloc[0]
+            # Display metrics with comparison
+            display_metrics(year_data, prev_year_data, is_first_year=False)
+        else:
+            # Create a copy of current year data for comparison, setting all values to 0
+            prev_year_data = year_data.copy()
+            for col in prev_year_data.index:
+                if isinstance(prev_year_data[col], (int, float)):
+                    prev_year_data[col] = 0
+            
+            st.warning(f"No data available for year {selected_year - 1}. Showing current year values without comparisons.")
+            display_metrics(year_data, prev_year_data, is_first_year=True)
 
-    # ------------------------------------------------------------------
-    # Footer
-    # ------------------------------------------------------------------
-    st.markdown(
-        'Made by [Valentin Mendez](https://www.linkedin.com/in/valentemendez/) using information from the [CBS StatLine](https://opendata.cbs.nl/statline/portal.html?_la=en&_catalog=CBS&tableId=37259eng&_theme=1177)'
-    )
+        # ------------------------------------------------------------------
+        # Footer
+        # ------------------------------------------------------------------
+        st.markdown(
+            'Made by [Valentin Mendez](https://www.linkedin.com/in/valentemendez/) using information from the [CBS StatLine](https://opendata.cbs.nl/statline/portal.html?_la=en&_catalog=CBS&tableId=37259eng&_theme=1177)'
+        )
 
-    # Hide the "Made with Streamlit" footer
-    hide_streamlit_style = """
-    <style>
-    footer {visibility: hidden;}
-    </style>
-    """
-    st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+        # Hide the "Made with Streamlit" footer
+        hide_streamlit_style = """
+        <style>
+        footer {visibility: hidden;}
+        </style>
+        """
+        st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
