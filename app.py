@@ -127,7 +127,7 @@ def create_total_moves_chart(data: pd.DataFrame):
 
 def display_metrics(year_data, prev_year_data, is_first_year=False):
     # Population and Density
-    st.subheader("Population")
+    st.subheader("Population stats")
     
     # Total Population with density below
     pop_change = year_data['PopulationOn31December_20'] - prev_year_data['PopulationOn31December_20']
@@ -141,31 +141,6 @@ def display_metrics(year_data, prev_year_data, is_first_year=False):
         f"<p style='font-size: 1rem; color: #666; margin-top: -1rem; margin-left: 1rem;'>{format_number(year_data['PopulationDensity_2'])} people/km²</p>",
         unsafe_allow_html=True
     )
-    
-    # Natural Change
-    st.subheader("Natural change")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        nat_change = year_data['NaturalIncrease_7'] - prev_year_data['NaturalIncrease_7']
-        st.metric(
-            "natural change",
-            format_number(year_data['NaturalIncrease_7']),
-            "-" if is_first_year else format_number(nat_change)
-        )
-    with col2:
-        births_change = year_data['LiveBornChildren_3'] - prev_year_data['LiveBornChildren_3']
-        st.metric(
-            "births",
-            format_number(year_data['LiveBornChildren_3']),
-            "-" if is_first_year else format_number(births_change)
-        )
-    with col3:
-        deaths_change = year_data['Deaths_5'] - prev_year_data['Deaths_5']
-        st.metric(
-            "deaths",
-            format_number(year_data['Deaths_5']),
-            "-" if is_first_year else format_number(deaths_change)
-        )
 
     # Arrivals Section
     st.subheader("Population movement - people arriving")
@@ -247,6 +222,31 @@ def display_metrics(year_data, prev_year_data, is_first_year=False):
             format_number(mun_balance),
             "-" if is_first_year else format_number(mun_balance_change)
         )
+    
+    # Natural Change
+    st.subheader("Natural change")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        nat_change = year_data['NaturalIncrease_7'] - prev_year_data['NaturalIncrease_7']
+        st.metric(
+            "natural change",
+            format_number(year_data['NaturalIncrease_7']),
+            "-" if is_first_year else format_number(nat_change)
+        )
+    with col2:
+        births_change = year_data['LiveBornChildren_3'] - prev_year_data['LiveBornChildren_3']
+        st.metric(
+            "births",
+            format_number(year_data['LiveBornChildren_3']),
+            "-" if is_first_year else format_number(births_change)
+        )
+    with col3:
+        deaths_change = year_data['Deaths_5'] - prev_year_data['Deaths_5']
+        st.metric(
+            "deaths",
+            format_number(year_data['Deaths_5']),
+            "-" if is_first_year else format_number(deaths_change)
+        )
 
 def main():
     st.title('Population Dynamics in the Netherlands')
@@ -301,15 +301,15 @@ def main():
                     use_container_width=True, 
                     key="population_chart")
     
-    # Natural Change Chart
-    st.plotly_chart(create_natural_change_chart(data_to_plot), 
-                    use_container_width=True,
-                    key="natural_change_chart")
-    
     # Total Moves Chart with Components
     st.plotly_chart(create_total_moves_chart(data_to_plot),
                     use_container_width=True,
                     key="total_moves_chart")
+    
+    # Natural Change Chart
+    st.plotly_chart(create_natural_change_chart(data_to_plot), 
+                    use_container_width=True,
+                    key="natural_change_chart")
     
     # Year selector below charts
     available_years = sorted(data_to_plot['Periods Label'].unique(), reverse=True)
