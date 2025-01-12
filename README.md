@@ -2,7 +2,7 @@
 
 This repository contains an interactive dashboard analyzing population dynamics in the Netherlands over a 12-year period, using official data from Statistics Netherlands (CBS). The dashboard provides comprehensive insights into population development, natural change patterns, and migration flows at national and regional levels.
 
-Go to the app: population-dynamics-netherlands
+Go to the app: https://population-dynamics-netherlands.streamlit.app/
 
 ## Data Source
 - Data sourced from Statistics Netherlands (CBS)

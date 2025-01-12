@@ -1,4 +1,6 @@
 streamlit
 pandas
+numpy
 altair
-protobuf==3.20.0
+plotly
+matplotlib
