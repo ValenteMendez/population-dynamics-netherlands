@@ -625,20 +625,20 @@ def main():
             st.warning(f"No data available for year {selected_year - 1}. Showing current year values without comparisons.")
             display_metrics(year_data, prev_year_data, is_first_year=True)
 
-        # ------------------------------------------------------------------
-        # Footer
-        # ------------------------------------------------------------------
-        st.markdown(
-            'Made by [Valentin Mendez](https://www.linkedin.com/in/valentemendez/) using information from the [CBS StatLine](https://opendata.cbs.nl/statline/portal.html?_la=en&_catalog=CBS&tableId=37259eng&_theme=1177)'
-        )
+    # ------------------------------------------------------------------
+    # Footer - Moved outside the else block to show in all views
+    # ------------------------------------------------------------------
+    st.markdown(
+        'Made by [Valentin Mendez](https://www.linkedin.com/in/valentemendez/) using information from the [CBS StatLine](https://opendata.cbs.nl/statline/portal.html?_la=en&_catalog=CBS&tableId=37259eng&_theme=1177)'
+    )
 
-        # Hide the "Made with Streamlit" footer
-        hide_streamlit_style = """
-        <style>
-        footer {visibility: hidden;}
-        </style>
-        """
-        st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+    # Hide the "Made with Streamlit" footer
+    hide_streamlit_style = """
+    <style>
+    footer {visibility: hidden;}
+    </style>
+    """
+    st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
